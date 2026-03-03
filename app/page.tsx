@@ -3,11 +3,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 type Rect = { x: number; y: number; w: number; h: number };
+type Enemy = { r: Rect; dir: 1 | -1; alive: boolean };
 
 function aabb(a: Rect, b: Rect) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
-
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -72,17 +72,26 @@ function makeAudio() {
   };
 }
 
+/** ---------- 3 LEVEL DATA ---------- */
+type LevelData = {
+  worldW: number;
+  blocks: Rect[];
+  coins: Rect[];
+  mushrooms: Rect[];
+  enemies: Enemy[];
+  pits: { start: number; end: number }[];
+  flag: Rect; // (w/h нь collision-д)
+};
+
 export default function Page() {
-  // View/world
+  // View
   const VIEW_W = 960;
   const VIEW_H = 540;
   const GROUND_H = 70;
-  const WORLD_W = 2600;
 
   // Physics
   const GRAVITY = 2100;
   const MOVE = 520;
-  const RUN = 760;
   const JUMP = 820;
 
   // Smooth feel
@@ -91,36 +100,149 @@ export default function Page() {
   const COYOTE = 0.09;
   const JUMPBUF = 0.10;
 
+  const LEVELS: LevelData[] = useMemo(() => {
+    const mkEnemy = (x: number, dir: 1 | -1 = -1): Enemy => ({
+      r: { x, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 },
+      dir,
+      alive: true
+    });
+
+    const level1W = 2600;
+    const level2W = 2800;
+    const level3W = 3000;
+
+    const baseFlag = (worldW: number): Rect => ({
+      x: worldW - 120,
+      y: VIEW_H - GROUND_H - 180,
+      w: 74,
+      h: 180
+    });
+
+    return [
+      {
+        worldW: level1W,
+        blocks: [
+          { x: 260, y: 360, w: 64, h: 44 },
+          { x: 340, y: 300, w: 64, h: 44 },
+          { x: 420, y: 240, w: 64, h: 44 },
+          { x: 720, y: 320, w: 64, h: 44 },
+          { x: 784, y: 320, w: 64, h: 44 },
+          { x: 1100, y: 280, w: 64, h: 44 },
+          { x: 1500, y: 340, w: 64, h: 44 },
+          { x: 1564, y: 340, w: 64, h: 44 },
+          { x: 1628, y: 340, w: 64, h: 44 },
+          { x: 1950, y: 300, w: 64, h: 44 }
+        ],
+        coins: [
+          { x: 280, y: 320, w: 24, h: 24 },
+          { x: 360, y: 260, w: 24, h: 24 },
+          { x: 440, y: 200, w: 24, h: 24 },
+          { x: 740, y: 280, w: 24, h: 24 },
+          { x: 1120, y: 240, w: 24, h: 24 },
+          { x: 1980, y: 260, w: 24, h: 24 }
+        ],
+        mushrooms: [{ x: 860, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 }],
+        enemies: [mkEnemy(560), mkEnemy(1320), mkEnemy(1750)],
+        pits: [{ start: 980, end: 1040 }],
+        flag: baseFlag(level1W)
+      },
+
+      {
+        worldW: level2W,
+        blocks: [
+          { x: 240, y: 350, w: 64, h: 44 },
+          { x: 304, y: 350, w: 64, h: 44 },
+          { x: 520, y: 300, w: 64, h: 44 },
+          { x: 584, y: 260, w: 64, h: 44 },
+          { x: 760, y: 320, w: 64, h: 44 },
+          { x: 1100, y: 260, w: 64, h: 44 },
+          { x: 1164, y: 260, w: 64, h: 44 },
+          { x: 1520, y: 320, w: 64, h: 44 },
+          { x: 1720, y: 280, w: 64, h: 44 },
+          { x: 2100, y: 340, w: 64, h: 44 }
+        ],
+        coins: [
+          { x: 260, y: 310, w: 24, h: 24 },
+          { x: 540, y: 260, w: 24, h: 24 },
+          { x: 604, y: 220, w: 24, h: 24 },
+          { x: 1120, y: 220, w: 24, h: 24 },
+          { x: 1540, y: 280, w: 24, h: 24 },
+          { x: 2120, y: 300, w: 24, h: 24 }
+        ],
+        mushrooms: [{ x: 980, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 }],
+        enemies: [mkEnemy(420), mkEnemy(900), mkEnemy(1460), mkEnemy(1960)],
+        pits: [{ start: 700, end: 780 }, { start: 1600, end: 1680 }],
+        flag: baseFlag(level2W)
+      },
+
+      {
+        worldW: level3W,
+        blocks: [
+          { x: 260, y: 330, w: 64, h: 44 },
+          { x: 324, y: 330, w: 64, h: 44 },
+          { x: 520, y: 290, w: 64, h: 44 },
+          { x: 720, y: 250, w: 64, h: 44 },
+          { x: 920, y: 320, w: 64, h: 44 },
+          { x: 1180, y: 280, w: 64, h: 44 },
+          { x: 1244, y: 280, w: 64, h: 44 },
+          { x: 1600, y: 320, w: 64, h: 44 },
+          { x: 2000, y: 300, w: 64, h: 44 },
+          { x: 2320, y: 260, w: 64, h: 44 }
+        ],
+        coins: [
+          { x: 280, y: 290, w: 24, h: 24 },
+          { x: 540, y: 250, w: 24, h: 24 },
+          { x: 740, y: 210, w: 24, h: 24 },
+          { x: 940, y: 280, w: 24, h: 24 },
+          { x: 2020, y: 260, w: 24, h: 24 },
+          { x: 2340, y: 220, w: 24, h: 24 }
+        ],
+        mushrooms: [
+          { x: 880, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 },
+          { x: 1800, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 }
+        ],
+        enemies: [mkEnemy(460), mkEnemy(1040), mkEnemy(1520), mkEnemy(1860), mkEnemy(2220)],
+        pits: [{ start: 600, end: 700 }, { start: 1400, end: 1500 }, { start: 2100, end: 2200 }],
+        flag: baseFlag(level3W)
+      }
+    ];
+  }, [VIEW_H, GROUND_H]);
+
+  // Current level index (0..2)
+  const [levelIndex, setLevelIndex] = useState(0);
+
+  // Active level state
+  const [worldW, setWorldW] = useState(LEVELS[0].worldW);
+  const blocks = useRef<Rect[]>(LEVELS[0].blocks);
+  const pits = useRef<{ start: number; end: number }[]>(LEVELS[0].pits);
+  const flag = useRef<Rect>(LEVELS[0].flag);
+
+  const [coins, setCoins] = useState<Rect[]>(LEVELS[0].coins);
+  const [mushrooms, setMushrooms] = useState<Rect[]>(LEVELS[0].mushrooms);
+  const [enemies, setEnemies] = useState<Enemy[]>(LEVELS[0].enemies);
+
+  // Loop
   const rafRef = useRef<number | null>(null);
   const lastRef = useRef<number>(0);
 
-  const keys = useRef({
-    left: false,
-    right: false,
-    down: false
-  });
-
+  const keys = useRef({ left: false, right: false, down: false });
   const coyoteRef = useRef(0);
   const jumpBufRef = useRef(0);
 
   // Audio
   const audioRef = useRef<ReturnType<typeof makeAudio> | null>(null);
   const [muted, setMuted] = useState(false);
-
   const ensureAudio = async () => {
     if (!audioRef.current) audioRef.current = makeAudio();
     audioRef.current.setMuted(muted);
-    if (audioRef.current.ctx.state !== 'running') {
-      await audioRef.current.ctx.resume();
-    }
+    if (audioRef.current.ctx.state !== 'running') await audioRef.current.ctx.resume();
   };
   const sfx = (name: keyof ReturnType<typeof makeAudio>['sfx']) => {
-    // audio autoplay policy: must be after user gesture at least once
     audioRef.current?.setMuted(muted);
     audioRef.current?.sfx[name]?.();
   };
 
-  // Game state
+  // UI state
   const [paused, setPaused] = useState(true);
   const [message, setMessage] = useState('Start');
   const [life, setLife] = useState(3);
@@ -142,94 +264,57 @@ export default function Page() {
     h: 44
   });
 
-  // Level
-  const blocks = useMemo<Rect[]>(
-    () => [
-      { x: 260, y: 360, w: 64, h: 44 },
-      { x: 340, y: 300, w: 64, h: 44 },
-      { x: 420, y: 240, w: 64, h: 44 },
-      { x: 720, y: 320, w: 64, h: 44 },
-      { x: 784, y: 320, w: 64, h: 44 },
-      { x: 1100, y: 280, w: 64, h: 44 },
-      { x: 1500, y: 340, w: 64, h: 44 },
-      { x: 1564, y: 340, w: 64, h: 44 },
-      { x: 1628, y: 340, w: 64, h: 44 },
-      { x: 1950, y: 300, w: 64, h: 44 }
-    ],
-    []
-  );
+  const loadLevel = (idx: number, keepStats: boolean) => {
+    const lv = LEVELS[idx];
+    setWorldW(lv.worldW);
+    blocks.current = lv.blocks;
+    pits.current = lv.pits;
+    flag.current = lv.flag;
 
-  const [coins, setCoins] = useState<Rect[]>(() => [
-    { x: 280, y: 320, w: 24, h: 24 },
-    { x: 360, y: 260, w: 24, h: 24 },
-    { x: 440, y: 200, w: 24, h: 24 },
-    { x: 740, y: 280, w: 24, h: 24 },
-    { x: 1120, y: 240, w: 24, h: 24 },
-    { x: 1980, y: 260, w: 24, h: 24 }
-  ]);
+    setCoins(lv.coins);
+    setMushrooms(lv.mushrooms);
+    setEnemies(lv.enemies);
 
-  const [mushrooms, setMushrooms] = useState<Rect[]>(() => [
-    { x: 860, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 }
-  ]);
-
-  const [enemies, setEnemies] = useState<{ r: Rect; dir: 1 | -1; alive: boolean }[]>(() => [
-    { r: { x: 560, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
-    { r: { x: 1320, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
-    { r: { x: 1750, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true }
-  ]);
-
-  const flag = useMemo<Rect>(() => ({ x: WORLD_W - 120, y: VIEW_H - GROUND_H - 180, w: 74, h: 180 }), [WORLD_W]);
-
-  const reset = () => {
-    mario.current = {
-      x: 60,
-      y: VIEW_H - GROUND_H - 44,
-      vx: 0,
-      vy: 0,
-      onGround: false,
-      crouch: false,
-      w: 34,
-      h: 44
-    };
+    // reset mario + camera
+    mario.current.x = 60;
+    mario.current.y = VIEW_H - GROUND_H - 44;
+    mario.current.vx = 0;
+    mario.current.vy = 0;
+    mario.current.onGround = false;
+    mario.current.crouch = false;
     coyoteRef.current = 0;
     jumpBufRef.current = 0;
-
     setCamX(0);
-    setCoins([
-      { x: 280, y: 320, w: 24, h: 24 },
-      { x: 360, y: 260, w: 24, h: 24 },
-      { x: 440, y: 200, w: 24, h: 24 },
-      { x: 740, y: 280, w: 24, h: 24 },
-      { x: 1120, y: 240, w: 24, h: 24 },
-      { x: 1980, y: 260, w: 24, h: 24 }
-    ]);
-    setMushrooms([{ x: 860, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 }]);
-    setEnemies([
-      { r: { x: 560, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
-      { r: { x: 1320, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
-      { r: { x: 1750, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true }
-    ]);
-    setCoin(0);
-    setScore(0);
-    setBig(false);
+
     setWon(false);
-    setLife(3);
-    setMessage('Start');
     setPaused(true);
+    setMessage(`Level ${idx + 1}`);
+
+    if (!keepStats) {
+      setLife(3);
+      setCoin(0);
+      setScore(0);
+      setBig(false);
+    }
+  };
+
+  const resetAll = () => {
+    setLevelIndex(0);
+    loadLevel(0, false);
+    setMessage('Start');
   };
 
   const hit = () => {
-    // SFX (if audio already enabled)
     sfx('hurt');
-
     if (big) {
       setBig(false);
       setScore((s) => Math.max(0, s - 50));
       return;
     }
-
     setLife((l) => l - 1);
     setScore((s) => Math.max(0, s - 100));
+
+    // restart same level (keep stats except big already handled)
     mario.current.x = 60;
     mario.current.y = VIEW_H - GROUND_H - 44;
     mario.current.vx = 0;
@@ -244,24 +329,16 @@ export default function Page() {
       if (e.code === 'ArrowLeft') keys.current.left = true;
       if (e.code === 'ArrowRight') keys.current.right = true;
       if (e.code === 'ArrowDown') keys.current.down = true;
-
-      if (e.code === 'Space') {
-        // jump buffer (press slightly early)
-        jumpBufRef.current = JUMPBUF;
-      }
+      if (e.code === 'Space') jumpBufRef.current = JUMPBUF;
 
       if (e.code === 'KeyP') setPaused((p) => !p);
 
       if (e.code === 'Enter' && paused) {
-        // user gesture -> enable audio here
-        ensureAudio()
-          .then(() => sfx('start'))
-          .catch(() => {});
+        ensureAudio().then(() => sfx('start')).catch(() => {});
         setPaused(false);
         setMessage('');
       }
     };
-
     const up = (e: KeyboardEvent) => {
       if (e.code === 'ArrowLeft') keys.current.left = false;
       if (e.code === 'ArrowRight') keys.current.right = false;
@@ -286,39 +363,28 @@ export default function Page() {
       if (!paused && !won && life > 0) {
         const m = mario.current;
 
-        // Crouch (visual)
         m.crouch = keys.current.down;
 
-        // Ground/coyote bookkeeping
         if (m.onGround) coyoteRef.current = COYOTE;
         else coyoteRef.current = Math.max(0, coyoteRef.current - dt);
 
-        // Jump buffer countdown
         jumpBufRef.current = Math.max(0, jumpBufRef.current - dt);
 
-        // Horizontal movement (accel + friction)
-        const maxSpeed = (keys.current.left || keys.current.right) ? MOVE : 0;
-        const maxRun = (keys.current.left || keys.current.right) ? RUN : 0;
-
-        // simple run: hold Arrow + not needed extra key; keep it MOVE (optional)
-        const topSpeed = (jumpBufRef.current > 0) ? maxRun : maxSpeed;
-
+        // accel/friction
         let input = 0;
         if (keys.current.left) input -= 1;
         if (keys.current.right) input += 1;
 
         if (input !== 0) {
-          const desired = input * (topSpeed || MOVE);
+          const desired = input * MOVE;
           const diff = desired - m.vx;
-          const stepV = clamp(diff, -ACCEL * dt, ACCEL * dt);
-          m.vx += stepV;
+          m.vx += clamp(diff, -ACCEL * dt, ACCEL * dt);
         } else {
           const diff = -m.vx;
-          const stepV = clamp(diff, -FRICTION * dt, FRICTION * dt);
-          m.vx += stepV;
+          m.vx += clamp(diff, -FRICTION * dt, FRICTION * dt);
         }
 
-        // Jump (coyote + buffer)
+        // jump (coyote + buffer)
         const canJump = (m.onGround || coyoteRef.current > 0) && jumpBufRef.current > 0;
         if (canJump) {
           sfx('jump');
@@ -328,16 +394,14 @@ export default function Page() {
           jumpBufRef.current = 0;
         }
 
-        // Gravity
+        // gravity
         m.vy += GRAVITY * dt;
 
-        // Integrate
-        let nx = m.x + m.vx * dt;
+        // integrate
+        let nx = clamp(m.x + m.vx * dt, 0, worldW - m.w);
         let ny = m.y + m.vy * dt;
 
-        nx = clamp(nx, 0, WORLD_W - m.w);
-
-        // Ground
+        // ground
         const groundY = VIEW_H - GROUND_H - m.h;
         if (ny >= groundY) {
           ny = groundY;
@@ -347,9 +411,9 @@ export default function Page() {
           m.onGround = false;
         }
 
-        // Block collisions (AABB resolve)
+        // blocks
         const mRect: Rect = { x: nx, y: ny, w: m.w, h: m.h };
-        for (const b of blocks) {
+        for (const b of blocks.current) {
           if (!aabb(mRect, b)) continue;
 
           const dx1 = (b.x + b.w) - mRect.x;
@@ -374,27 +438,25 @@ export default function Page() {
               m.onGround = true;
             }
           }
-          mRect.x = nx; mRect.y = ny;
+          mRect.x = nx;
+          mRect.y = ny;
         }
 
-        // Pit demo
-        const pitStart = 980;
-        const pitEnd = 1040;
+        // pits
         const centerX = mRect.x + mRect.w / 2;
-        const onPit = centerX > pitStart && centerX < pitEnd;
+        const onPit = pits.current.some((p) => centerX > p.start && centerX < p.end);
         if (onPit && mRect.y >= groundY - 1) {
-          // fall
           m.onGround = false;
           m.vy += GRAVITY * dt;
           ny = m.y + m.vy * dt;
           if (ny > VIEW_H + 200) hit();
         }
 
-        // Apply
+        // apply
         m.x = nx;
         m.y = ny;
 
-        // Enemies
+        // enemies update + collisions
         setEnemies((prev) => {
           const next = prev.map((e) => {
             if (!e.alive) return e;
@@ -402,10 +464,10 @@ export default function Page() {
             let ex = e.r.x + e.dir * speedE * dt;
 
             if (ex < 0) { ex = 0; e.dir = 1; }
-            if (ex > WORLD_W - e.r.w) { ex = WORLD_W - e.r.w; e.dir = -1; }
+            if (ex > worldW - e.r.w) { ex = worldW - e.r.w; e.dir = -1; }
 
             const eRect: Rect = { ...e.r, x: ex };
-            for (const b of blocks) {
+            for (const b of blocks.current) {
               if (aabb(eRect, b)) {
                 e.dir = e.dir === 1 ? -1 : 1;
                 ex = e.r.x;
@@ -416,7 +478,6 @@ export default function Page() {
             return { ...e };
           });
 
-          // collision with Mario
           const mr: Rect = { x: m.x, y: m.y, w: m.w, h: m.h };
           const mrPrevY = m.y - m.vy * dt;
 
@@ -441,7 +502,7 @@ export default function Page() {
           return changed ? [...next] : next;
         });
 
-        // Coins
+        // coins
         setCoins((prev) => {
           const mr: Rect = { x: m.x, y: m.y, w: m.w, h: m.h };
           const remain: Rect[] = [];
@@ -465,7 +526,7 @@ export default function Page() {
           return remain;
         });
 
-        // Mushrooms
+        // mushrooms
         setMushrooms((prev) => {
           const mr: Rect = { x: m.x, y: m.y, w: m.w, h: m.h };
           const remain: Rect[] = [];
@@ -482,17 +543,23 @@ export default function Page() {
           return remain;
         });
 
-        // Win
+        // flag / win => next level or finish
         const mr2: Rect = { x: m.x, y: m.y, w: m.w, h: m.h };
-        if (aabb(mr2, flag)) {
+        if (aabb(mr2, flag.current)) {
+          sfx('win');
           setWon(true);
           setPaused(true);
-          setMessage('You Win! 🎉');
-          sfx('win');
+
+          const nextIdx = levelIndex + 1;
+          if (nextIdx < 3) {
+            setMessage(`Level ${levelIndex + 1} Clear! ➜ Level ${nextIdx + 1}`);
+          } else {
+            setMessage('All Levels Cleared! 🎉');
+          }
         }
 
-        // Smooth camera (frame-rate independent lerp)
-        const targetCam = clamp(m.x - VIEW_W * 0.38, 0, WORLD_W - VIEW_W);
+        // camera lerp
+        const targetCam = clamp(m.x - VIEW_W * 0.38, 0, worldW - VIEW_W);
         setCamX((c) => c + (targetCam - c) * (1 - Math.pow(0.001, dt)));
       }
 
@@ -505,7 +572,7 @@ export default function Page() {
       rafRef.current = null;
       lastRef.current = 0;
     };
-  }, [paused, won, life, blocks, flag, muted]);
+  }, [paused, won, life, muted, levelIndex, worldW, VIEW_W, COYOTE, JUMPBUF, ACCEL, FRICTION, GRAVITY, MOVE, JUMP]);
 
   useEffect(() => {
     if (life <= 0) {
@@ -514,16 +581,11 @@ export default function Page() {
     }
   }, [life]);
 
-  // IMPORTANT: Mario visibility fix => use left/top, NOT transform translate
-  const marioStyle: React.CSSProperties = {
-    left: mario.current.x,
-    top: mario.current.y
-  };
+  // Mario visibility fix: left/top
+  const marioStyle: React.CSSProperties = { left: mario.current.x, top: mario.current.y };
 
   const startByClick = async () => {
-    try {
-      await ensureAudio();
-    } catch {}
+    try { await ensureAudio(); } catch {}
     if (paused && life > 0 && !won) {
       sfx('start');
       setPaused(false);
@@ -531,13 +593,35 @@ export default function Page() {
     }
   };
 
+  const nextLevel = () => {
+    const nextIdx = levelIndex + 1;
+    if (nextIdx < 3) {
+      setLevelIndex(nextIdx);
+      loadLevel(nextIdx, true); // keep stats across levels
+    } else {
+      // finished all
+      setMessage('All Levels Cleared! 🎉');
+      setPaused(true);
+    }
+  };
+
+  // initial load (only once)
+  useEffect(() => {
+    loadLevel(0, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="wrap">
       <div className="hud">
         <div>
-          <strong>Life:</strong> {life} &nbsp; <strong>Coin:</strong> {coin} &nbsp; <strong>Score:</strong> {score}
-          &nbsp; <strong>State:</strong> {big ? 'Big' : 'Small'}
+          <strong>Level:</strong> {levelIndex + 1}/3 &nbsp;
+          <strong>Life:</strong> {life} &nbsp;
+          <strong>Coin:</strong> {coin} &nbsp;
+          <strong>Score:</strong> {score} &nbsp;
+          <strong>State:</strong> {big ? 'Big' : 'Small'}
         </div>
+
         <div className="right">
           <span>Controls:</span>
           <kbd>←</kbd><kbd>→</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>↓</kbd> crouch &nbsp; <kbd>Enter</kbd> start &nbsp; <kbd>P</kbd> pause
@@ -546,7 +630,6 @@ export default function Page() {
             onClick={async () => {
               try { await ensureAudio(); } catch {}
               setMuted((m) => !m);
-              // apply instantly
               setTimeout(() => audioRef.current?.setMuted(!muted), 0);
             }}
           >
@@ -559,23 +642,23 @@ export default function Page() {
         <div className="world" style={{ transform: `translateX(${-camX}px)` }}>
           <div className="ground" />
 
-          {blocks.map((b, i) => (
-            <div key={i} className="block" style={{ left: b.x, top: b.y }} />
+          {blocks.current.map((b, i) => (
+            <div key={`b-${i}`} className="block" style={{ left: b.x, top: b.y }} />
           ))}
 
           {coins.map((c, i) => (
-            <div key={i} className="coin" style={{ left: c.x, top: c.y }} />
+            <div key={`c-${i}`} className="coin" style={{ left: c.x, top: c.y }} />
           ))}
 
           {mushrooms.map((m, i) => (
-            <div key={i} className="mushroom" style={{ left: m.x, top: m.y }} />
+            <div key={`m-${i}`} className="mushroom" style={{ left: m.x, top: m.y }} />
           ))}
 
           {enemies.filter((e) => e.alive).map((e, i) => (
-            <div key={i} className="enemy" style={{ left: e.r.x, top: e.r.y }} />
+            <div key={`e-${i}`} className="enemy" style={{ left: e.r.x, top: e.r.y }} />
           ))}
 
-          <div className="flag" style={{ left: flag.x, top: flag.y }} />
+          <div className="flag" style={{ left: flag.current.x, top: flag.current.y }} />
 
           <div
             className={['mario', big ? 'big' : '', mario.current.crouch ? 'crouch' : ''].join(' ')}
@@ -591,15 +674,23 @@ export default function Page() {
         {paused && (
           <div className="overlay">
             <div className="panel">
-              <h1>{message === 'Start' ? 'Mario CSS Demo' : message}</h1>
+              <h1>{message === 'Start' ? 'Mario CSS Demo (3 Levels)' : message}</h1>
               <p>Enter дарж эхлүүлнэ (эсвэл тоглоом дээр click).</p>
-              <p>Дайсан дээрээс үсэрвэл устгана. Хажуу талаас мөргөлдвөл life хасна.</p>
-              <p>🍄 Mushroom авбал Big болно (1 удаа гэмтэл “сөрнө”). 🪙 Coin цуглуул.</p>
+              <p>Flag хүрвэл дараагийн level рүү шилжинэ (3 үе).</p>
+              <p>🍄 Mushroom авбал Big болно (1 удаа гэмтлээс хамгаална). 🪙 Coin цуглуул.</p>
+
               <div className="btnrow">
-                <button onClick={startByClick} disabled={life <= 0 || won}>
-                  {won ? 'Finished' : life <= 0 ? 'Dead' : 'Play'}
-                </button>
-                <button className="secondary" onClick={reset}>Reset</button>
+                {!won && (
+                  <button onClick={startByClick} disabled={life <= 0}>
+                    {life <= 0 ? 'Dead' : 'Play'}
+                  </button>
+                )}
+
+                {won && levelIndex < 2 && (
+                  <button onClick={nextLevel}>Next Level</button>
+                )}
+
+                <button className="secondary" onClick={resetAll}>Reset All</button>
               </div>
             </div>
           </div>
