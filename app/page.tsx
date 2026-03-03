@@ -616,6 +616,7 @@ export default function Page() {
       <div className="hud">
         <div>
           <strong>Level:</strong> {levelIndex + 1}/3 &nbsp;
+          <strong>Theme:</strong> {levelIndex === 0 ? "Classic" : levelIndex === 1 ? "Sunset" : "Night"}&nbsp;
           <strong>Life:</strong> {life} &nbsp;
           <strong>Coin:</strong> {coin} &nbsp;
           <strong>Score:</strong> {score} &nbsp;
@@ -638,7 +639,7 @@ export default function Page() {
         </div>
       </div>
 
-      <div className="game" onClick={startByClick}>
+      <div className={`game theme-${levelIndex + 1}`} onClick={startByClick}>
         <div className="world" style={{ transform: `translateX(${-camX}px)` }}>
           <div className="ground" />
 

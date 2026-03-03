@@ -241,3 +241,49 @@ button {
   cursor: pointer;
 }
 button.secondary { background: #334155; color: #e2e8f0; }
+
+/* ---------- THEMES (Level 1/2/3) ---------- */
+.game.theme-1 {
+  /* Default: blue sky / green ground */
+  --sky: #7ec8ff;
+  --ground: #2f9e44;
+  --ground2: #2b8a3e;
+  --brick: #c96a2b;
+  --brick2: #b85f25;
+  --flag: #12b886;
+}
+
+/* Sunset / desert vibe */
+.game.theme-2 {
+  --sky: #ffb38a;
+  --ground: #c97c3d;
+  --ground2: #b36b33;
+  --brick: #a85b2a;
+  --brick2: #924f25;
+  --flag: #ff6b6b;
+}
+
+/* Night / neon vibe */
+.game.theme-3 {
+  --sky: #2b2d7a;
+  --ground: #5c7cfa;
+  --ground2: #4263eb;
+  --brick: #364fc7;
+  --brick2: #2b3f9e;
+  --flag: #63e6be;
+}
+
+/* Optional: add subtle stars for theme-3 */
+.game.theme-3::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 25%, rgba(255,255,255,.75) 1px, transparent 2px),
+    radial-gradient(circle at 35% 40%, rgba(255,255,255,.55) 1px, transparent 2px),
+    radial-gradient(circle at 60% 20%, rgba(255,255,255,.65) 1px, transparent 2px),
+    radial-gradient(circle at 80% 35%, rgba(255,255,255,.5) 1px, transparent 2px),
+    radial-gradient(circle at 72% 70%, rgba(255,255,255,.55) 1px, transparent 2px);
+  opacity: .35;
+}
