@@ -5,11 +5,7 @@ export const metadata = {
   description: "Next.js + CSS only visuals Mario-like platformer"
 };
 
-export default function RootLayout({
-  children
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="mn">
       <body>{children}</body>

@@ -31,6 +31,7 @@ body { font-family: ui-sans-serif, system-ui; background: #0b0f17; }
   gap: 12px;
   font-size: 14px;
   opacity: .95;
+  flex-wrap: wrap;
 }
 .hud kbd {
   background: #1f2937;
@@ -38,6 +39,13 @@ body { font-family: ui-sans-serif, system-ui; background: #0b0f17; }
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 12px;
+}
+.hud .right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .game {
@@ -122,7 +130,7 @@ body { font-family: ui-sans-serif, system-ui; background: #0b0f17; }
   opacity: .9;
 }
 
-/* Enemy (Goomba маяг) */
+/* Enemy */
 .enemy {
   position: absolute;
   width: 34px; height: 28px;
@@ -159,16 +167,19 @@ body { font-family: ui-sans-serif, system-ui; background: #0b0f17; }
   border: 2px solid rgba(0,0,0,.18);
 }
 
-/* Mario */
+/* Mario (visibility fix: left/top + scale variable) */
 .mario {
   position: absolute;
   width: 34px;
   height: 44px;
-  bottom: 70px;
-  left: 60px;
-  will-change: transform;
+  left: 0;
+  top: 0;
+  --scale: 1;
+  transform: scale(var(--scale));
+  transform-origin: bottom left;
+  will-change: left, top, transform;
 }
-.mario.big { transform: scale(1.25); transform-origin: bottom left; }
+.mario.big { --scale: 1.25; }
 
 .mario .head {
   position: absolute; left: 6px; top: 0;
@@ -219,6 +230,7 @@ body { font-family: ui-sans-serif, system-ui; background: #0b0f17; }
 .panel h1 { margin: 0 0 10px; font-size: 18px; }
 .panel p { margin: 6px 0; opacity: .9; line-height: 1.45; }
 .btnrow { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+
 button {
   border: 0;
   border-radius: 12px;

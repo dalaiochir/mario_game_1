@@ -12,16 +12,84 @@ function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
 }
 
+/** File-less SFX (WebAudio synth) */
+function makeAudio() {
+  const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+  const ctx = new Ctx();
+  const master = ctx.createGain();
+  master.gain.value = 0.18;
+  master.connect(ctx.destination);
+
+  const beep = (freq: number, dur = 0.08, type: OscillatorType = 'square', gain = 0.9) => {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, ctx.currentTime);
+
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(gain, ctx.currentTime + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+
+    o.connect(g);
+    g.connect(master);
+    o.start();
+    o.stop(ctx.currentTime + dur);
+  };
+
+  const noise = (dur = 0.12, gain = 0.35) => {
+    const bufferSize = Math.floor(ctx.sampleRate * dur);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+
+    src.connect(g);
+    g.connect(master);
+    src.start();
+    src.stop(ctx.currentTime + dur);
+  };
+
+  return {
+    ctx,
+    setMuted(m: boolean) {
+      master.gain.value = m ? 0 : 0.18;
+    },
+    sfx: {
+      start() { beep(440, 0.08, 'triangle', 0.25); },
+      jump() { beep(880, 0.07, 'square', 0.7); beep(1320, 0.05, 'square', 0.35); },
+      coin() { beep(1046, 0.05, 'triangle', 0.55); beep(1568, 0.06, 'triangle', 0.35); },
+      power() { beep(523, 0.08, 'sawtooth', 0.5); beep(784, 0.10, 'sawtooth', 0.35); },
+      stomp() { beep(220, 0.07, 'square', 0.6); },
+      hurt() { noise(0.14, 0.45); beep(110, 0.14, 'sawtooth', 0.25); },
+      win() { beep(659, 0.10, 'triangle', 0.35); beep(784, 0.10, 'triangle', 0.35); beep(988, 0.14, 'triangle', 0.35); }
+    }
+  };
+}
+
 export default function Page() {
-  // World хэмжээс
+  // View/world
   const VIEW_W = 960;
   const VIEW_H = 540;
   const GROUND_H = 70;
-  const WORLD_W = 2600; // урт level
-  const GRAVITY = 2100; // px/s^2
-  const MOVE = 520;     // px/s
-  const RUN = 760;      // px/s
-  const JUMP = 820;     // px/s
+  const WORLD_W = 2600;
+
+  // Physics
+  const GRAVITY = 2100;
+  const MOVE = 520;
+  const RUN = 760;
+  const JUMP = 820;
+
+  // Smooth feel
+  const ACCEL = 5200;
+  const FRICTION = 6200;
+  const COYOTE = 0.09;
+  const JUMPBUF = 0.10;
 
   const rafRef = useRef<number | null>(null);
   const lastRef = useRef<number>(0);
@@ -29,21 +97,40 @@ export default function Page() {
   const keys = useRef({
     left: false,
     right: false,
-    down: false,
-    jump: false,
-    jumpPressed: false,
+    down: false
   });
 
-  const [paused, setPaused] = useState(true);
-  const [message, setMessage] = useState<string>('Start');
+  const coyoteRef = useRef(0);
+  const jumpBufRef = useRef(0);
 
+  // Audio
+  const audioRef = useRef<ReturnType<typeof makeAudio> | null>(null);
+  const [muted, setMuted] = useState(false);
+
+  const ensureAudio = async () => {
+    if (!audioRef.current) audioRef.current = makeAudio();
+    audioRef.current.setMuted(muted);
+    if (audioRef.current.ctx.state !== 'running') {
+      await audioRef.current.ctx.resume();
+    }
+  };
+  const sfx = (name: keyof ReturnType<typeof makeAudio>['sfx']) => {
+    // audio autoplay policy: must be after user gesture at least once
+    audioRef.current?.setMuted(muted);
+    audioRef.current?.sfx[name]?.();
+  };
+
+  // Game state
+  const [paused, setPaused] = useState(true);
+  const [message, setMessage] = useState('Start');
   const [life, setLife] = useState(3);
   const [coin, setCoin] = useState(0);
   const [score, setScore] = useState(0);
   const [big, setBig] = useState(false);
   const [won, setWon] = useState(false);
+  const [camX, setCamX] = useState(0);
 
-  // Mario state
+  // Mario
   const mario = useRef({
     x: 60,
     y: VIEW_H - GROUND_H - 44,
@@ -52,10 +139,10 @@ export default function Page() {
     onGround: false,
     crouch: false,
     w: 34,
-    h: 44,
+    h: 44
   });
 
-  // Level entities
+  // Level
   const blocks = useMemo<Rect[]>(
     () => [
       { x: 260, y: 360, w: 64, h: 44 },
@@ -67,38 +154,31 @@ export default function Page() {
       { x: 1500, y: 340, w: 64, h: 44 },
       { x: 1564, y: 340, w: 64, h: 44 },
       { x: 1628, y: 340, w: 64, h: 44 },
-      { x: 1950, y: 300, w: 64, h: 44 },
+      { x: 1950, y: 300, w: 64, h: 44 }
     ],
     []
   );
 
-  const [coins, setCoins] = useState<Rect[]>(
-    () => [
-      { x: 280, y: 320, w: 24, h: 24 },
-      { x: 360, y: 260, w: 24, h: 24 },
-      { x: 440, y: 200, w: 24, h: 24 },
-      { x: 740, y: 280, w: 24, h: 24 },
-      { x: 1120, y: 240, w: 24, h: 24 },
-      { x: 1980, y: 260, w: 24, h: 24 },
-    ]
-  );
+  const [coins, setCoins] = useState<Rect[]>(() => [
+    { x: 280, y: 320, w: 24, h: 24 },
+    { x: 360, y: 260, w: 24, h: 24 },
+    { x: 440, y: 200, w: 24, h: 24 },
+    { x: 740, y: 280, w: 24, h: 24 },
+    { x: 1120, y: 240, w: 24, h: 24 },
+    { x: 1980, y: 260, w: 24, h: 24 }
+  ]);
 
-  const [mushrooms, setMushrooms] = useState<Rect[]>(
-    () => [{ x: 860, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 }]
-  );
+  const [mushrooms, setMushrooms] = useState<Rect[]>(() => [
+    { x: 860, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 }
+  ]);
 
-  const [enemies, setEnemies] = useState<{ r: Rect; dir: 1 | -1; alive: boolean }[]>(
-    () => [
-      { r: { x: 560, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
-      { r: { x: 1320, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
-      { r: { x: 1750, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
-    ]
-  );
+  const [enemies, setEnemies] = useState<{ r: Rect; dir: 1 | -1; alive: boolean }[]>(() => [
+    { r: { x: 560, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
+    { r: { x: 1320, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
+    { r: { x: 1750, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true }
+  ]);
 
   const flag = useMemo<Rect>(() => ({ x: WORLD_W - 120, y: VIEW_H - GROUND_H - 180, w: 74, h: 180 }), [WORLD_W]);
-
-  // Camera
-  const [camX, setCamX] = useState(0);
 
   const reset = () => {
     mario.current = {
@@ -109,8 +189,11 @@ export default function Page() {
       onGround: false,
       crouch: false,
       w: 34,
-      h: 44,
+      h: 44
     };
+    coyoteRef.current = 0;
+    jumpBufRef.current = 0;
+
     setCamX(0);
     setCoins([
       { x: 280, y: 320, w: 24, h: 24 },
@@ -118,61 +201,71 @@ export default function Page() {
       { x: 440, y: 200, w: 24, h: 24 },
       { x: 740, y: 280, w: 24, h: 24 },
       { x: 1120, y: 240, w: 24, h: 24 },
-      { x: 1980, y: 260, w: 24, h: 24 },
+      { x: 1980, y: 260, w: 24, h: 24 }
     ]);
     setMushrooms([{ x: 860, y: VIEW_H - GROUND_H - 30, w: 30, h: 30 }]);
     setEnemies([
       { r: { x: 560, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
       { r: { x: 1320, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
-      { r: { x: 1750, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true },
+      { r: { x: 1750, y: VIEW_H - GROUND_H - 28, w: 34, h: 28 }, dir: -1, alive: true }
     ]);
     setCoin(0);
     setScore(0);
     setBig(false);
     setWon(false);
+    setLife(3);
     setMessage('Start');
     setPaused(true);
   };
 
   const hit = () => {
-    // Дайсанд хүрэх дүрэм:
-    // - Big бол жижиг болно (амь хасахгүй)
-    // - Small бол амь -1, дахин эхлэнэ
+    // SFX (if audio already enabled)
+    sfx('hurt');
+
     if (big) {
       setBig(false);
       setScore((s) => Math.max(0, s - 50));
       return;
     }
+
     setLife((l) => l - 1);
     setScore((s) => Math.max(0, s - 100));
     mario.current.x = 60;
     mario.current.y = VIEW_H - GROUND_H - 44;
     mario.current.vx = 0;
     mario.current.vy = 0;
+    mario.current.onGround = false;
     setCamX(0);
   };
 
-  // Key handlers
+  // Input
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === 'ArrowLeft') keys.current.left = true;
       if (e.code === 'ArrowRight') keys.current.right = true;
       if (e.code === 'ArrowDown') keys.current.down = true;
+
       if (e.code === 'Space') {
-        if (!keys.current.jump) keys.current.jumpPressed = true;
-        keys.current.jump = true;
+        // jump buffer (press slightly early)
+        jumpBufRef.current = JUMPBUF;
       }
+
       if (e.code === 'KeyP') setPaused((p) => !p);
+
       if (e.code === 'Enter' && paused) {
+        // user gesture -> enable audio here
+        ensureAudio()
+          .then(() => sfx('start'))
+          .catch(() => {});
         setPaused(false);
         setMessage('');
       }
     };
+
     const up = (e: KeyboardEvent) => {
       if (e.code === 'ArrowLeft') keys.current.left = false;
       if (e.code === 'ArrowRight') keys.current.right = false;
       if (e.code === 'ArrowDown') keys.current.down = false;
-      if (e.code === 'Space') keys.current.jump = false;
     };
 
     window.addEventListener('keydown', down);
@@ -183,7 +276,7 @@ export default function Page() {
     };
   }, [paused]);
 
-  // Game loop
+  // Main loop
   useEffect(() => {
     const step = (t: number) => {
       if (!lastRef.current) lastRef.current = t;
@@ -193,67 +286,90 @@ export default function Page() {
       if (!paused && !won && life > 0) {
         const m = mario.current;
 
-        // Crouch
+        // Crouch (visual)
         m.crouch = keys.current.down;
 
-        // Move
-        const speed = (keys.current.left || keys.current.right) && (keys.current.jump) ? RUN : MOVE;
-        let targetVx = 0;
-        if (keys.current.left) targetVx -= speed;
-        if (keys.current.right) targetVx += speed;
-        m.vx = targetVx;
+        // Ground/coyote bookkeeping
+        if (m.onGround) coyoteRef.current = COYOTE;
+        else coyoteRef.current = Math.max(0, coyoteRef.current - dt);
 
-        // Jump (press once)
-        if (keys.current.jumpPressed && m.onGround) {
+        // Jump buffer countdown
+        jumpBufRef.current = Math.max(0, jumpBufRef.current - dt);
+
+        // Horizontal movement (accel + friction)
+        const maxSpeed = (keys.current.left || keys.current.right) ? MOVE : 0;
+        const maxRun = (keys.current.left || keys.current.right) ? RUN : 0;
+
+        // simple run: hold Arrow + not needed extra key; keep it MOVE (optional)
+        const topSpeed = (jumpBufRef.current > 0) ? maxRun : maxSpeed;
+
+        let input = 0;
+        if (keys.current.left) input -= 1;
+        if (keys.current.right) input += 1;
+
+        if (input !== 0) {
+          const desired = input * (topSpeed || MOVE);
+          const diff = desired - m.vx;
+          const stepV = clamp(diff, -ACCEL * dt, ACCEL * dt);
+          m.vx += stepV;
+        } else {
+          const diff = -m.vx;
+          const stepV = clamp(diff, -FRICTION * dt, FRICTION * dt);
+          m.vx += stepV;
+        }
+
+        // Jump (coyote + buffer)
+        const canJump = (m.onGround || coyoteRef.current > 0) && jumpBufRef.current > 0;
+        if (canJump) {
+          sfx('jump');
           m.vy = -JUMP;
           m.onGround = false;
+          coyoteRef.current = 0;
+          jumpBufRef.current = 0;
         }
-        keys.current.jumpPressed = false;
 
         // Gravity
         m.vy += GRAVITY * dt;
 
-        // Integrate X
+        // Integrate
         let nx = m.x + m.vx * dt;
         let ny = m.y + m.vy * dt;
 
-        // Bounds
         nx = clamp(nx, 0, WORLD_W - m.w);
 
-        // Ground collision
+        // Ground
         const groundY = VIEW_H - GROUND_H - m.h;
         if (ny >= groundY) {
           ny = groundY;
           m.vy = 0;
           m.onGround = true;
+        } else {
+          m.onGround = false;
         }
 
-        // Block collisions (simple resolution)
+        // Block collisions (AABB resolve)
         const mRect: Rect = { x: nx, y: ny, w: m.w, h: m.h };
         for (const b of blocks) {
           if (!aabb(mRect, b)) continue;
 
-          // Determine smallest penetration
-          const dx1 = (b.x + b.w) - mRect.x;        // push left
-          const dx2 = (mRect.x + mRect.w) - b.x;    // push right
-          const dy1 = (b.y + b.h) - mRect.y;        // push up
-          const dy2 = (mRect.y + mRect.h) - b.y;    // push down
+          const dx1 = (b.x + b.w) - mRect.x;
+          const dx2 = (mRect.x + mRect.w) - b.x;
+          const dy1 = (b.y + b.h) - mRect.y;
+          const dy2 = (mRect.y + mRect.h) - b.y;
 
           const minX = Math.min(dx1, dx2);
           const minY = Math.min(dy1, dy2);
 
           if (minX < minY) {
-            // resolve horizontally
             if (dx1 < dx2) nx = b.x + b.w;
             else nx = b.x - mRect.w;
             m.vx = 0;
           } else {
-            // resolve vertically
             if (dy1 < dy2) {
-              ny = b.y + b.h; // hit from below
+              ny = b.y + b.h; // head hit
               m.vy = 0;
             } else {
-              ny = b.y - mRect.h; // land on top
+              ny = b.y - mRect.h; // land
               m.vy = 0;
               m.onGround = true;
             }
@@ -261,49 +377,46 @@ export default function Page() {
           mRect.x = nx; mRect.y = ny;
         }
 
-        // Fall into pit (ямар нэг “нүх” эффект: газраас доош унах боломжгүй тул pit-ийг хиймлээр шалгана)
-        // Энд demo болгон WORLD-ийн төгсгөлөөс өмнө нэг pit:
+        // Pit demo
         const pitStart = 980;
         const pitEnd = 1040;
-        const onPit = (mRect.x + mRect.w / 2) > pitStart && (mRect.x + mRect.w / 2) < pitEnd;
+        const centerX = mRect.x + mRect.w / 2;
+        const onPit = centerX > pitStart && centerX < pitEnd;
         if (onPit && mRect.y >= groundY - 1) {
-          // pit дээр газар байхгүй мэт
+          // fall
           m.onGround = false;
           m.vy += GRAVITY * dt;
           ny = m.y + m.vy * dt;
           if (ny > VIEW_H + 200) hit();
         }
 
-        // Update Mario
+        // Apply
         m.x = nx;
         m.y = ny;
 
-        // Enemy patrol + collisions
+        // Enemies
         setEnemies((prev) => {
           const next = prev.map((e) => {
             if (!e.alive) return e;
             const speedE = 90;
             let ex = e.r.x + e.dir * speedE * dt;
 
-            // turn around on bounds
             if (ex < 0) { ex = 0; e.dir = 1; }
             if (ex > WORLD_W - e.r.w) { ex = WORLD_W - e.r.w; e.dir = -1; }
 
-            // turn around near blocks (rough)
             const eRect: Rect = { ...e.r, x: ex };
             for (const b of blocks) {
-              if (aabb({ x: eRect.x, y: eRect.y, w: eRect.w, h: eRect.h }, b)) {
-                e.dir = (e.dir === 1 ? -1 : 1);
-                ex = e.r.x; // cancel move
+              if (aabb(eRect, b)) {
+                e.dir = e.dir === 1 ? -1 : 1;
+                ex = e.r.x;
                 break;
               }
             }
-
             e.r = { ...e.r, x: ex };
             return { ...e };
           });
 
-          // Check enemy collision with Mario (use current rect)
+          // collision with Mario
           const mr: Rect = { x: m.x, y: m.y, w: m.w, h: m.h };
           const mrPrevY = m.y - m.vy * dt;
 
@@ -312,15 +425,15 @@ export default function Page() {
             if (!e.alive) continue;
             if (!aabb(mr, e.r)) continue;
 
-            // Stomp detection: Mario was above enemy last frame and is falling
             const wasAbove = mrPrevY + m.h <= e.r.y + 6;
             const falling = m.vy > 0;
 
             if (wasAbove && falling) {
               e.alive = false;
               changed = true;
-              m.vy = -JUMP * 0.55; // bounce
+              m.vy = -JUMP * 0.55;
               setScore((s) => s + 200);
+              sfx('stomp');
             } else {
               hit();
             }
@@ -328,7 +441,7 @@ export default function Page() {
           return changed ? [...next] : next;
         });
 
-        // Coin pickup
+        // Coins
         setCoins((prev) => {
           const mr: Rect = { x: m.x, y: m.y, w: m.w, h: m.h };
           const remain: Rect[] = [];
@@ -340,7 +453,6 @@ export default function Page() {
           if (got) {
             setCoin((k) => {
               const nk = k + got;
-              // 100 coin -> +1 life
               if (nk >= 100) {
                 setLife((l) => l + Math.floor(nk / 100));
                 return nk % 100;
@@ -348,11 +460,12 @@ export default function Page() {
               return nk;
             });
             setScore((s) => s + got * 50);
+            sfx('coin');
           }
           return remain;
         });
 
-        // Mushroom pickup
+        // Mushrooms
         setMushrooms((prev) => {
           const mr: Rect = { x: m.x, y: m.y, w: m.w, h: m.h };
           const remain: Rect[] = [];
@@ -364,21 +477,23 @@ export default function Page() {
           if (got) {
             setBig(true);
             setScore((s) => s + 300);
+            sfx('power');
           }
           return remain;
         });
 
-        // Win check (flag)
+        // Win
         const mr2: Rect = { x: m.x, y: m.y, w: m.w, h: m.h };
         if (aabb(mr2, flag)) {
           setWon(true);
           setPaused(true);
           setMessage('You Win! 🎉');
+          sfx('win');
         }
 
-        // Camera follow
+        // Smooth camera (frame-rate independent lerp)
         const targetCam = clamp(m.x - VIEW_W * 0.38, 0, WORLD_W - VIEW_W);
-        setCamX(targetCam);
+        setCamX((c) => c + (targetCam - c) * (1 - Math.pow(0.001, dt)));
       }
 
       rafRef.current = requestAnimationFrame(step);
@@ -390,7 +505,7 @@ export default function Page() {
       rafRef.current = null;
       lastRef.current = 0;
     };
-  }, [paused, won, life, blocks, flag]);
+  }, [paused, won, life, blocks, flag, muted]);
 
   useEffect(() => {
     if (life <= 0) {
@@ -399,8 +514,21 @@ export default function Page() {
     }
   }, [life]);
 
+  // IMPORTANT: Mario visibility fix => use left/top, NOT transform translate
   const marioStyle: React.CSSProperties = {
-    transform: `translate(${mario.current.x}px, ${mario.current.y}px)`,
+    left: mario.current.x,
+    top: mario.current.y
+  };
+
+  const startByClick = async () => {
+    try {
+      await ensureAudio();
+    } catch {}
+    if (paused && life > 0 && !won) {
+      sfx('start');
+      setPaused(false);
+      setMessage('');
+    }
   };
 
   return (
@@ -410,47 +538,47 @@ export default function Page() {
           <strong>Life:</strong> {life} &nbsp; <strong>Coin:</strong> {coin} &nbsp; <strong>Score:</strong> {score}
           &nbsp; <strong>State:</strong> {big ? 'Big' : 'Small'}
         </div>
-        <div>
-          <span>Controls:</span> <kbd>←</kbd><kbd>→</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>↓</kbd> crouch
-          &nbsp; <kbd>Enter</kbd> start &nbsp; <kbd>P</kbd> pause
+        <div className="right">
+          <span>Controls:</span>
+          <kbd>←</kbd><kbd>→</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>↓</kbd> crouch &nbsp; <kbd>Enter</kbd> start &nbsp; <kbd>P</kbd> pause
+          <button
+            className="secondary"
+            onClick={async () => {
+              try { await ensureAudio(); } catch {}
+              setMuted((m) => !m);
+              // apply instantly
+              setTimeout(() => audioRef.current?.setMuted(!muted), 0);
+            }}
+          >
+            {muted ? 'Unmute' : 'Mute'}
+          </button>
         </div>
       </div>
 
-      <div className="game" onClick={() => paused && life > 0 && !won && (setPaused(false), setMessage(''))}>
+      <div className="game" onClick={startByClick}>
         <div className="world" style={{ transform: `translateX(${-camX}px)` }}>
-          {/* Ground */}
           <div className="ground" />
 
-          {/* Blocks */}
           {blocks.map((b, i) => (
             <div key={i} className="block" style={{ left: b.x, top: b.y }} />
           ))}
 
-          {/* Coins */}
           {coins.map((c, i) => (
             <div key={i} className="coin" style={{ left: c.x, top: c.y }} />
           ))}
 
-          {/* Mushrooms */}
           {mushrooms.map((m, i) => (
             <div key={i} className="mushroom" style={{ left: m.x, top: m.y }} />
           ))}
 
-          {/* Enemies */}
-          {enemies.filter(e => e.alive).map((e, i) => (
+          {enemies.filter((e) => e.alive).map((e, i) => (
             <div key={i} className="enemy" style={{ left: e.r.x, top: e.r.y }} />
           ))}
 
-          {/* Flag */}
           <div className="flag" style={{ left: flag.x, top: flag.y }} />
 
-          {/* Mario */}
           <div
-            className={[
-              'mario',
-              big ? 'big' : '',
-              mario.current.crouch ? 'crouch' : '',
-            ].join(' ')}
+            className={['mario', big ? 'big' : '', mario.current.crouch ? 'crouch' : ''].join(' ')}
             style={marioStyle}
           >
             <div className="cap" />
@@ -463,16 +591,12 @@ export default function Page() {
         {paused && (
           <div className="overlay">
             <div className="panel">
-              <h1>
-                {message === 'Start'
-                  ? 'Mario CSS Demo'
-                  : message}
-              </h1>
+              <h1>{message === 'Start' ? 'Mario CSS Demo' : message}</h1>
               <p>Enter дарж эхлүүлнэ (эсвэл тоглоом дээр click).</p>
               <p>Дайсан дээрээс үсэрвэл устгана. Хажуу талаас мөргөлдвөл life хасна.</p>
               <p>🍄 Mushroom авбал Big болно (1 удаа гэмтэл “сөрнө”). 🪙 Coin цуглуул.</p>
               <div className="btnrow">
-                <button onClick={() => (setPaused(false), setMessage(''))} disabled={life <= 0 || won}>
+                <button onClick={startByClick} disabled={life <= 0 || won}>
                   {won ? 'Finished' : life <= 0 ? 'Dead' : 'Play'}
                 </button>
                 <button className="secondary" onClick={reset}>Reset</button>
