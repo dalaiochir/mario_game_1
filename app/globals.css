@@ -1,0 +1,231 @@
+:root {
+  --sky: #7ec8ff;
+  --ground: #2f9e44;
+  --ground2: #2b8a3e;
+  --brick: #c96a2b;
+  --brick2: #b85f25;
+  --marioRed: #e03131;
+  --marioBlue: #1971c2;
+  --coin: #f59f00;
+  --enemy: #7a4a21;
+  --flag: #12b886;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font-family: ui-sans-serif, system-ui; background: #0b0f17; }
+
+.wrap {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.hud {
+  width: min(960px, 100%);
+  color: #e9ecef;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 12px;
+  font-size: 14px;
+  opacity: .95;
+}
+.hud kbd {
+  background: #1f2937;
+  border: 1px solid #374151;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.game {
+  width: min(960px, 100%);
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(var(--sky), #d0f4ff 75%);
+  border-radius: 18px;
+  border: 1px solid #1f2937;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+}
+
+/* Камер (world шилжинэ) */
+.world {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+/* Газрын зурвас */
+.ground {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 0;
+  height: 70px;
+  background:
+    repeating-linear-gradient(90deg, var(--ground), var(--ground) 28px, var(--ground2) 28px, var(--ground2) 56px);
+  border-top: 4px solid #1b5e2a;
+}
+
+/* Блок/тавцан */
+.block {
+  position: absolute;
+  width: 64px;
+  height: 44px;
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(90deg, var(--brick), var(--brick) 12px, var(--brick2) 12px, var(--brick2) 24px);
+  border: 2px solid rgba(0,0,0,.25);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.25);
+}
+
+/* Coin */
+.coin {
+  position: absolute;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffe066, var(--coin));
+  border: 2px solid rgba(0,0,0,.2);
+  box-shadow: 0 6px 12px rgba(0,0,0,.18);
+  animation: coinBob 1.2s ease-in-out infinite;
+}
+@keyframes coinBob { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-6px);} }
+
+/* Mushroom */
+.mushroom {
+  position: absolute;
+  width: 30px; height: 30px;
+  border-radius: 10px 10px 12px 12px;
+  background: #fff;
+  border: 2px solid rgba(0,0,0,.2);
+  overflow: hidden;
+}
+.mushroom::before{
+  content:"";
+  position:absolute;
+  left:-6px; right:-6px; top:-10px;
+  height: 20px;
+  border-radius: 50px;
+  background: radial-gradient(circle at 30% 30%, #ff8787, #e03131);
+  border-bottom: 2px solid rgba(0,0,0,.15);
+}
+.mushroom::after{
+  content:"";
+  position:absolute;
+  left: 8px; top: 12px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #e03131;
+  box-shadow: 10px 2px 0 #e03131, 4px 10px 0 #e03131;
+  opacity: .9;
+}
+
+/* Enemy (Goomba маяг) */
+.enemy {
+  position: absolute;
+  width: 34px; height: 28px;
+  border-radius: 12px 12px 10px 10px;
+  background: linear-gradient(#9c6b3a, var(--enemy));
+  border: 2px solid rgba(0,0,0,.22);
+}
+.enemy::before{
+  content:"";
+  position:absolute;
+  left: 7px; top: 9px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #111;
+  box-shadow: 14px 0 0 #111;
+}
+
+/* Flag */
+.flag {
+  position: absolute;
+  width: 14px;
+  height: 180px;
+  background: #495057;
+  border-radius: 10px;
+  bottom: 70px;
+}
+.flag::before{
+  content:"";
+  position:absolute;
+  left: 10px; top: 12px;
+  width: 60px; height: 34px;
+  background: linear-gradient(#63e6be, var(--flag));
+  border-radius: 10px;
+  border: 2px solid rgba(0,0,0,.18);
+}
+
+/* Mario */
+.mario {
+  position: absolute;
+  width: 34px;
+  height: 44px;
+  bottom: 70px;
+  left: 60px;
+  will-change: transform;
+}
+.mario.big { transform: scale(1.25); transform-origin: bottom left; }
+
+.mario .head {
+  position: absolute; left: 6px; top: 0;
+  width: 22px; height: 18px;
+  border-radius: 10px 10px 8px 8px;
+  background: #ffd8a8;
+  border: 2px solid rgba(0,0,0,.18);
+}
+.mario .cap {
+  position: absolute; left: 2px; top: -4px;
+  width: 30px; height: 12px;
+  border-radius: 10px;
+  background: linear-gradient(#ff6b6b, var(--marioRed));
+  border: 2px solid rgba(0,0,0,.18);
+}
+.mario .body {
+  position: absolute; left: 3px; top: 16px;
+  width: 28px; height: 18px;
+  border-radius: 8px;
+  background: linear-gradient(#4dabf7, var(--marioBlue));
+  border: 2px solid rgba(0,0,0,.18);
+}
+.mario .legs {
+  position: absolute; left: 6px; top: 32px;
+  width: 22px; height: 12px;
+  border-radius: 8px;
+  background: #343a40;
+  border: 2px solid rgba(0,0,0,.18);
+}
+.mario.crouch .body { height: 14px; top: 18px; }
+.mario.crouch .legs { top: 30px; height: 10px; }
+
+/* Overlay */
+.overlay {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(3px);
+  color: #fff;
+}
+.panel {
+  background: rgba(17,24,39,.92);
+  border: 1px solid rgba(255,255,255,.12);
+  padding: 18px 18px;
+  border-radius: 16px;
+  width: min(520px, calc(100% - 24px));
+}
+.panel h1 { margin: 0 0 10px; font-size: 18px; }
+.panel p { margin: 6px 0; opacity: .9; line-height: 1.45; }
+.btnrow { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+button {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #12b886;
+  color: #062b1e;
+  font-weight: 700;
+  cursor: pointer;
+}
+button.secondary { background: #334155; color: #e2e8f0; }
